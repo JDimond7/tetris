@@ -1,8 +1,8 @@
 
 //TODO: Make fallen pieces persistent on board. DONE.
-//TODO: implement piece rotation.
+//TODO: implement piece rotation. -- pieces rotate, but weird outofbounds errors sometimes occur.
 //TODO: Collision detection with the board. DONE.
-//TODO: Delete completed lines -- new method of collision, by block color, shall make this easier hopefully.
+//TODO: Delete completed lines -- DONE!!
 //TODO: Colour the blocks -- DONE!!
 //TODO: Final game details; scoring, levels, etc.
 //TODO: Make the music not a computational aneurysm for the cpu.
@@ -17,6 +17,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.util.ArrayList;
 import java.util.Random;
 
 
@@ -96,7 +97,8 @@ class Board extends JPanel implements ActionListener {
             }
             Graphics2D g = boardStateImage.createGraphics();
             this.paint(g);
-            testShape = new Tetronimo(); //how to get this to choose random shape? not easy.
+            removeFullLines(g);
+            testShape = new Tetronimo();
         }
         repaint();
     }
@@ -105,6 +107,41 @@ class Board extends JPanel implements ActionListener {
         //super.paintComponent(g); //removing this fixes non-persistent pieces - but the colours are flipped
         g.drawImage(boardStateImage,0,0,Color.WHITE,this); //adding Colour.WHITE and making image typr ARGB above
                                                            //has fixed colour problems!
+    }
+
+    public void removeFullLines(Graphics2D g){ //not recognising a full line...
+        ArrayList<Integer> fullLines = new ArrayList();
+        boolean lineIsFull = true;
+
+        for (int j = 0; j < boardHeight; j+=blocksize) {
+            lineIsFull = true;
+            for (int i = 0; i < boardWidth; i+=blocksize) {
+               if (null == boardState2[10+i][10+j]){ //this offset worked to make it recognise full lines;
+                   lineIsFull = false;
+                   break;
+               }
+            }
+            if (lineIsFull){
+                fullLines.add(j);
+            }
+        }
+
+        for (int n : fullLines){ //this doens't work though.
+            for (int j = n; j > blocksize; j-=blocksize) {
+                for (int i = 0; i < boardWidth; i+=blocksize) {
+                    if (null == boardState2[10+i][10+j-blocksize]){
+                        boardState2[10+i][10+j] = null;
+                        g.setColor(Color.white);
+                        g.fillRect(10+i,10+j,blocksize,blocksize);
+                        continue;
+                    }
+                    g.setColor(boardState2[10+i][10+j-blocksize]);
+                    g.fill3DRect(10+i,10+j,blocksize,blocksize,true);
+                }
+            }
+        }
+        System.out.println("full lines: " + fullLines.size());
+        repaint();
     }
 
     class keyboardInput extends KeyAdapter{
@@ -141,18 +178,17 @@ class Tetronimo {
 
     public enum Shape {LINE, S, Z, L, REVERSE_L, T, SQUARE, NONE};
     Shape shape;
+
     int blocksize = 25;
     int boardWidth = 10*blocksize;
     int boardHeight = 20*blocksize;
+
     int[][] coords;
-    Color color = Color.white;
-    Random random = new Random();
+
     Shape[] values = Shape.values();
 
-    Shape setShape(){
-        int r = random.nextInt(7);
-        return values[r];
-    }
+    Color color = Color.white;
+    Random random = new Random();
 
     //shapes to be written with top-left most block first, bottom-right most block last.
     //top takes priority over right, bottom takes priority over right.
@@ -193,6 +229,7 @@ class Tetronimo {
             {center+10-blocksize,10+2*blocksize},
             {center+10,10+2*blocksize}};
 
+
     public Tetronimo(){
         this.shape = setShape();
         switch (shape){
@@ -227,6 +264,11 @@ class Tetronimo {
         }
     }
 
+    Shape setShape(){ //chooses shape of new tetronimo.
+        int r = random.nextInt(7);
+        return values[r];
+    }
+
     public void moveRight(Color[][] boardState){
         if (moveIsPossible("RIGHT", boardState)) {
             for (int[] pt : this.coords) {
@@ -251,8 +293,8 @@ class Tetronimo {
         }
     }
 
-    public boolean lineDown(Color[][] boardState){
-        if (moveIsPossible("DOWN", boardState)) {
+    public boolean lineDown(Color[][] boardState){ //the line down enforced by time. Is boolean, not void, hence
+        if (moveIsPossible("DOWN", boardState)) {  // separate from moveDown.
             for (int[] pt : this.coords) {
                      pt[1] += blocksize;
             }
@@ -261,9 +303,12 @@ class Tetronimo {
         return false;
     }
 
-    public boolean moveIsPossible(String move, Color[][] boardState){
+    public boolean moveIsPossible(String move, Color[][] boardState){ //might it be best to check all blocks?
         if (move.equals("RIGHT")){
-            if (this.coords[3][0] + blocksize < boardWidth){
+            if (this.coords[0][0] + blocksize < boardWidth &&
+                    this.coords[1][0] + blocksize < boardWidth &&
+                    this.coords[2][0] + blocksize < boardWidth &&
+                    this.coords[3][0] + blocksize < boardWidth){
                 for (int[] block : this.coords){
                     if (null != boardState[block[0]+blocksize][block[1]]){
                         return false;
@@ -274,7 +319,10 @@ class Tetronimo {
             return false;
         }
         else if (move.equals("LEFT")){
-            if (this.coords[0][0] - blocksize > 0){
+            if (this.coords[0][0] - blocksize > 0 &&
+                    this.coords[1][0] - blocksize > 0 &&
+                    this.coords[2][0] - blocksize > 0 &&
+                    this.coords[3][0] - blocksize > 0){
                 for (int[] block : this.coords){
                     if (null != boardState[block[0]-blocksize][block[1]]){
                         return false;
@@ -284,7 +332,10 @@ class Tetronimo {
             }
             return false;
         } else if (move.equals("DOWN")){
-            if (this.coords[3][1] + blocksize < boardHeight){
+            if (this.coords[0][1] + blocksize < boardHeight &&
+                    this.coords[1][1] + blocksize < boardHeight &&
+                    this.coords[2][1] + blocksize < boardHeight &&
+                    this.coords[3][1] + blocksize < boardHeight){
                 for (int[] block : this.coords){
                     if (null != boardState[block[0]][block[1]+blocksize]){
                         return false;
@@ -300,32 +351,20 @@ class Tetronimo {
         }
     }
 
-    void rotate(){
+    void rotate(){//like how it does L and Reverse-L. S and Z might want a change, as might T.
+        if (this.shape == Shape.SQUARE){
+            return;
+        }
         //int[][] rotmat = new int[][]{{0,-1},{1,0}};
         int centerx = this.coords[1][0];
         int centery = this.coords[1][1];
         int temp;
         for (int[] point : this.coords){
             temp = point[0]-centerx;
-            point[1] -= centery;
-            point[0] = -point[1];
-            point[1] = temp;
+            point[0] = -(point[1] - centery) + centerx;
+            point[1] = temp + centery;
         }
     }
-    //public boolean moveDownPossible(String move, Color[][] boardState){
-    //    if (this.coords[3][1] + blocksize < boardHeight){
-    //        for (int[] block : this.coords){
-    //            //if (boardState[block[0]][block[1]+blocksize]){
-    //            //    return false;
-    //            //}
-    //            if (null != boardState[block[0]][block[1] + blocksize]){
-    //                return false;
-    //            }
-    //        }
-    //        return true;
-    //    }
-    //    return false;
-    //}
 }
 
 class musicThread extends Thread { //provides music thread - but how to get it to loop? --will the curent thing be ok forever?
@@ -382,6 +421,7 @@ class musicThread extends Thread { //provides music thread - but how to get it t
     //however this just made a strange exception get thrown. Not ideal.
 }
 
+
 //for (int[] pt : testShape.coords){
 //    g.drawLine(pt[0],          pt[1],          pt[0]+blocksize,pt[1]);
 //    g.drawLine(pt[0],          pt[1],          pt[0],          pt[1]+blocksize);
@@ -389,3 +429,17 @@ class musicThread extends Thread { //provides music thread - but how to get it t
 //    g.drawLine(pt[0],          pt[1]+blocksize,pt[0]+blocksize,pt[1]+blocksize);
 //}
 
+//public boolean moveDownPossible(String move, Color[][] boardState){
+//    if (this.coords[3][1] + blocksize < boardHeight){
+//        for (int[] block : this.coords){
+//            //if (boardState[block[0]][block[1]+blocksize]){
+//            //    return false;
+//            //}
+//            if (null != boardState[block[0]][block[1] + blocksize]){
+//                return false;
+//            }
+//        }
+//        return true;
+//    }
+//    return false;
+//}
