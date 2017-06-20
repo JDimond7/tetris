@@ -18,6 +18,8 @@ import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Random;
 
 
@@ -64,7 +66,7 @@ class Board extends JPanel implements ActionListener {
         for (Color[] row : boardState2){
             for (Color col : row){
                 col = null;
-            } //Actually, maybe make one larger and colour boundary white, so that this provides edges of board nicely.
+            }
         }
     }
 
@@ -124,9 +126,12 @@ class Board extends JPanel implements ActionListener {
             if (lineIsFull){
                 fullLines.add(j);
             }
-        }
+        } //some (rare) full lines are not counted.
 
-        for (int n : fullLines){ //this doens't work though.
+        //some lines change colour after removal..!??!
+        Collections.sort(fullLines);
+        //Collections.reverse(fullLines);
+        for (int n : fullLines){ //mostly works - on occasion there are lines that dont get removed.
             for (int j = n; j > blocksize; j-=blocksize) {
                 for (int i = 0; i < boardWidth; i+=blocksize) {
                     if (null == boardState2[10+i][10+j-blocksize]){
@@ -141,6 +146,7 @@ class Board extends JPanel implements ActionListener {
             }
         }
         System.out.println("full lines: " + fullLines.size());
+        System.out.println(fullLines.toString());
         repaint();
     }
 
@@ -355,7 +361,6 @@ class Tetronimo {
         if (this.shape == Shape.SQUARE){
             return;
         }
-        //int[][] rotmat = new int[][]{{0,-1},{1,0}};
         int centerx = this.coords[1][0];
         int centery = this.coords[1][1];
         int temp;
@@ -401,7 +406,9 @@ class musicThread extends Thread { //provides music thread - but how to get it t
             e.printStackTrace();
         }
 
-        keepPlaying();
+        seq.setLoopCount(100);
+        seq.start();
+        //keepPlaying();
     }
 
     private void keepPlaying(){
