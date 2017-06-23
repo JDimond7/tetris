@@ -1,11 +1,4 @@
 
-//TODO: Make fallen pieces persistent on board. DONE.
-//TODO: implement piece rotation. -- pieces rotate, but weird outofbounds errors sometimes occur.
-//TODO: Collision detection with the board. DONE.
-//TODO: Delete completed lines -- DONE!!
-//TODO: Colour the blocks -- DONE!!
-//TODO: Final game details; scoring, levels, etc.
-//TODO: Make the music not a computational aneurysm for the cpu.
 //TODO: Find a better and more consistent alternative to swing's timer.
 
 import javax.sound.midi.InvalidMidiDataException;
@@ -18,10 +11,7 @@ import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Random;
-
 
 /**
  * Created by jdimond on 15/06/17.
@@ -29,150 +19,306 @@ import java.util.Random;
 
 
 public class tetris {
+
+    static Board board;
+
     public static void main(String[] args){
         JFrame frame = new JFrame();
-        //frame.setSize(400,700);
-        frame.setSize(10*25+25, 20*25+40); //not sure why these dimensions fit, but they do quite well.
+
+        frame.setSize(10*25+25, 20*25+80); //not sure why these dimensions fit, but they do quite well.
         frame.setResizable(false);
         frame.setLocationRelativeTo(null);
         frame.setTitle("Tetris");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        Board board = new Board();
-        frame.add(board);
+        JPanel container = new JPanel();
+        container.setLayout(new BoxLayout(container,BoxLayout.Y_AXIS));
+
+        board = new Board();
+        Status stats = new Status();
+        stats.setPreferredSize(new Dimension(11*25,5));
+
+        container.add(board);
+        container.add(stats);
+        frame.add(container);
+
         board.timer.start();
-        //musicThread music = new musicThread();
+        musicThread music = new musicThread();
 
         frame.setVisible(true); //after my while true in music thread, if these lines
-        //music.run();            //are the other way round, the frame won't load.
+        music.run();            //are the other way round, the frame won't load.
                                 //also the music takes disgusting amount of cpu...!
 
+        }
+}
+
+class Status extends JPanel{
+
+    static int score = 0;
+    static int level = 1;
+
+    static JLabel scoreLabel = new JLabel();
+    static JLabel pauseLabel = new JLabel();
+    static JLabel levelLabel = new JLabel();
+
+    static boolean paused = false;
+    static boolean gameIsOver = false;
+
+    public Status(){
+
+        labelInit();
+        this.add(levelLabel);
+        this.add(scoreLabel);
+        this.add(pauseLabel);
+    }
+
+    public static void labelInit(){
+        levelLabel.setText("Level: " + level);
+        scoreLabel.setText("      Score: " + 0);
+    }
+
+    public static void increaseScore(int n){
+        score += Math.pow(2,n-1);
+        scoreLabel.setText("      Score: " + score);
+    }
+
+    public static void levelUp(){
+       level++;
+       levelLabel.setText("Level: " + level);
+    }
+
+    public static void pause(){
+        paused = true;
+        pauseLabel.setText(" PAUSED ");
+    }
+
+    public static void unpause(){
+        paused = false;
+        pauseLabel.setText("");
+    }
+
+    public static void resetScoreAndLevel() {
+        score = 0;
+        scoreLabel.setText("      Score: " + score);
+        level = 1;
+        levelLabel.setText("Level: " + level);
     }
 }
 
 class Board extends JPanel implements ActionListener {
+
     int blocksize = 25; //size of blocks in pixels
-    int boardWidth = 10*blocksize;
-    int boardHeight= 20*blocksize; //std size of board relative to blocks
-    Tetronimo testShape;
-    Timer timer = new Timer(500, this);
+
+    Tetronimo currentPiece;
+
+    Timer timer = new Timer(600, this);
     static Random random = new Random();
+
     BufferedImage boardStateImage = new BufferedImage(11*25,27*20,BufferedImage.TYPE_INT_ARGB);
-
-    boolean[][] boardState = new boolean[boardWidth][boardHeight]; //auto init to all false
-    Color[][] boardState2 = new Color[boardWidth][boardHeight];
-
-    void initBoardState(){ //init board to null just for peace of mind.
-        for (Color[] row : boardState2){
-            for (Color col : row){
-                col = null;
-            }
-        }
-    }
+    static Color[][] boardState = new Color[10][20];
 
     public Board(){
         initBoardState();
-        testShape = new Tetronimo();
+        super.setPreferredSize(new Dimension(270, 500));
+        currentPiece = new Tetronimo();
         addKeyListener(new keyboardInput());
         setFocusable(true);
         requestFocusInWindow(); //needed this line and the one above before the keyListener would work.
+
+        //draw boundary.
+        Graphics2D g = boardStateImage.createGraphics();
+        g.setColor(Color.GRAY);
+        g.fillRect(0,0,10,20*25+10);
+        g.fillRect(10*25+10,0,10*25+10,20*25+10);
+        g.fillRect(0,20*25+10,10*25+25,20*25+10);
+
     }
 
     @Override
     public void paint(Graphics g){
         super.paint(g);
-        for (int[] pt: testShape.coords){
-            g.setColor(testShape.color);
-            g.fill3DRect(pt[0],pt[1],blocksize,blocksize,true);//much better!
+        for (int[] pt: currentPiece.coords){
+            g.setColor(currentPiece.color);
+            g.fill3DRect(pt[0],pt[1],blocksize,blocksize,true);
         }
     }
 
     @Override
     public void actionPerformed(ActionEvent actionEvent) {
-        //if (testShape.moveDownPossible("DOWN",boardState2)){
-        if(testShape.moveIsPossible("DOWN",boardState2)){
-            testShape.lineDown(boardState2);
+        if(currentPiece.moveIsPossible("DOWN", boardState)){
+            currentPiece.lineDown(boardState);
         } else {
-            for (int[] block : testShape.coords){
-                //boardState[block[0]][block[1]] = true;
-                boardState2[block[0]][block[1]] = testShape.color;
+            for (int[] block : currentPiece.coords){
+                boardState[(block[0]-10)/blocksize][(block[1]-10)/blocksize] = currentPiece.color;
             }
             Graphics2D g = boardStateImage.createGraphics();
             this.paint(g);
             removeFullLines(g);
-            testShape = new Tetronimo();
+            currentPiece = new Tetronimo();
+
+            if (gameOver()){
+                timer.stop();
+                g.setColor(Color.BLACK);
+                Font font = new Font("Courier", Font.BOLD, 45);
+                g.setFont(font);
+                g.drawString("GAME OVER", 13,200);
+            }
         }
         repaint();
     }
 
+
+    @Override
     public void paintComponent(Graphics g){
-        //super.paintComponent(g); //removing this fixes non-persistent pieces - but the colours are flipped
         g.drawImage(boardStateImage,0,0,Color.WHITE,this); //adding Colour.WHITE and making image typr ARGB above
                                                            //has fixed colour problems!
     }
 
-    public void removeFullLines(Graphics2D g){ //not recognising a full line...
+
+    public static void initBoardState(){
+        for (int i = 0; i < 10; i++) {
+            for (int j = 0; j < 20; j++) {
+                boardState[i][j] = null;
+            }
+        }
+    }
+
+    public void levelUp(){
+        Status.levelUp();
+        if (Status.level < 16) {
+            int delay = timer.getDelay();
+            timer.setDelay((int) Math.floor(0.90 * delay)); //gets 10% faster until level 16.
+        }
+    }
+
+    public boolean gameOver(){
+        for (int[] block : currentPiece.coords){
+            if (boardState[(block[0]-10)/blocksize][(block[1]-10)/blocksize] != null){
+                Status.gameIsOver = true;
+                timer.stop();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void restart(){
+        initBoardState(); //reset board
+        Graphics2D g = (Graphics2D) boardStateImage.getGraphics();
+        g.setColor(Color.WHITE); //reset background
+        g.fillRect(10,0,10*25,20*25+10);
+        repaint();
+        Status.resetScoreAndLevel();
+        timer.setDelay(600); //reset level
+        timer.start(); //start over.
+    }
+
+    public void removeFullLines(Graphics2D g){
         ArrayList<Integer> fullLines = new ArrayList();
         boolean lineIsFull = true;
 
-        for (int j = 0; j < boardHeight; j+=blocksize) {
+        for (int j = 0; j < 20; j++){
             lineIsFull = true;
-            for (int i = 0; i < boardWidth; i+=blocksize) {
-               if (null == boardState2[10+i][10+j]){ //this offset worked to make it recognise full lines;
-                   lineIsFull = false;
-                   break;
-               }
+            for (int i = 0; i < 10; i++){
+                if (boardState[i][j] == null){
+                    lineIsFull = false;
+                    break;
+                }
             }
             if (lineIsFull){
                 fullLines.add(j);
             }
-        } //some (rare) full lines are not counted.
+        }
 
-        //some lines change colour after removal..!??!
-        Collections.sort(fullLines);
-        //Collections.reverse(fullLines);
-        for (int n : fullLines){ //mostly works - on occasion there are lines that dont get removed.
-            for (int j = n; j > blocksize; j-=blocksize) {
-                for (int i = 0; i < boardWidth; i+=blocksize) {
-                    if (null == boardState2[10+i][10+j-blocksize]){
-                        boardState2[10+i][10+j] = null;
+        Status.increaseScore(fullLines.size());
+        if (Status.score != 0 && Status.score%15 == 0){ //level for each 15 points. not working at all for some reason.
+            //this current method means that skips in points via 3 or 4 line clears can cause
+            //a levelup to be missed.
+            levelUp();
+            Status.score++; //total hack, should think of something better.
+        }
+        for (int n : fullLines){
+            for (int j = n; j > 0; j--){
+                for (int i = 0; i < 10; i++){
+                    if (boardState[i][j-1] == null){
+                        boardState[i][j] = null;
                         g.setColor(Color.white);
-                        g.fillRect(10+i,10+j,blocksize,blocksize);
+                        g.fillRect((i*blocksize)+10, (j*blocksize)+10, blocksize, blocksize);
                         continue;
                     }
-                    g.setColor(boardState2[10+i][10+j-blocksize]);
-                    g.fill3DRect(10+i,10+j,blocksize,blocksize,true);
+                    boardState[i][j] = boardState[i][j-1]; //THIS should be what was missing. Sorted it!!!
+                    g.setColor(boardState[i][j-1]);
+                    g.fill3DRect((i*blocksize)+10, (j*blocksize)+10, blocksize, blocksize, true);
                 }
             }
         }
-        System.out.println("full lines: " + fullLines.size());
-        System.out.println(fullLines.toString());
         repaint();
     }
+
 
     class keyboardInput extends KeyAdapter{
         public void keyPressed(KeyEvent e){
             switch (e.getKeyCode()){
                 case KeyEvent.VK_RIGHT:
-                    testShape.moveRight(boardState2);
+                    if (Status.paused || Status.gameIsOver){
+                        break;
+                    }
+                    currentPiece.moveRight(boardState);
                     repaint();
                     break;
+
                 case KeyEvent.VK_LEFT:
-                    testShape.moveLeft(boardState2);
+                    if (Status.paused || Status.gameIsOver){
+                        break;
+                    }
+                    currentPiece.moveLeft(boardState);
                     repaint();
                     break;
+
                 case KeyEvent.VK_DOWN:
-                    testShape.moveDown(boardState2);
+                    if (Status.paused || Status.gameIsOver){
+                        break;
+                    }
+                    currentPiece.moveDown(boardState);
                     repaint();
                     break;
+
                 case KeyEvent.VK_SPACE:
-                    while(testShape.lineDown(boardState2)){} //strange but works.
+                    if (Status.paused || Status.gameIsOver){
+                        break;
+                    }
+                    while(currentPiece.lineDown(boardState)){}
                     repaint();
                     break;
+
                 case KeyEvent.VK_UP:
-                    testShape.rotate();
+                    if (Status.paused || Status.gameIsOver){
+                        break;
+                    }
+                    currentPiece.rotate();
                     repaint();
                     break;
+
+                case KeyEvent.VK_P:
+                    if (timer.isRunning()) {
+                        Status.pause();
+                        timer.stop();
+                    } else {
+                        Status.unpause();
+                        timer.start();
+                    }
+                    break;
+
+                case KeyEvent.VK_R:
+                    if (Status.gameIsOver){
+                        Status.gameIsOver = false;
+                        restart();
+                    }
+                    break;
+
+                case KeyEvent.VK_Q:
+                    System.exit(0);
+
                 default:
                     break;
             }
@@ -196,19 +342,17 @@ class Tetronimo {
     Color color = Color.white;
     Random random = new Random();
 
-    //shapes to be written with top-left most block first, bottom-right most block last.
-    //top takes priority over right, bottom takes priority over right.
     int center = boardWidth/2;
 
     int[][] lineShape = new int[][]{ {center+10,10},
-                                     {center+10,10+blocksize},
-                                     {center+10,10+2*blocksize},
-                                     {center+10,10+3*blocksize} };
+            {center+10,10+blocksize},
+            {center+10,10+2*blocksize},
+            {center+10,10+3*blocksize} };
 
     int[][] tShape = new int[][]{ {center+10-blocksize, blocksize+10},
-                                  {center+10,10},
-                                  {center+10, blocksize+10},
-                                  {center+10+blocksize,blocksize+10}};
+            {center+10, blocksize+10},
+            {center+10,10},
+            {center+10+blocksize,blocksize+10}};
 
     int[][] lShape = new int[][]{ {center+10, 10},
             {center+10,10+blocksize},
@@ -243,26 +387,32 @@ class Tetronimo {
                 this.coords = lineShape;
                 this.color = Color.cyan;
                 break;
+
             case T:
                 this.coords = tShape;
                 this.color = Color.magenta;
                 break;
+
             case L:
                 this.coords = lShape;
                 this.color = Color.orange;
                 break;
+
             case S:
                 this.coords = sShape;
                 this.color = Color.red;
                 break;
+
             case Z:
                 this.coords = zShape;
                 this.color = Color.green;
                 break;
+
             case SQUARE:
                 this.coords = SqShape;
                 this.color = Color.yellow;
                 break;
+
             case REVERSE_L:
                 this.coords = revLShape;
                 this.color = Color.blue;
@@ -309,15 +459,15 @@ class Tetronimo {
         return false;
     }
 
-    public boolean moveIsPossible(String move, Color[][] boardState){ //might it be best to check all blocks?
+    public boolean moveIsPossible(String move, Color[][] boardState){
         if (move.equals("RIGHT")){
             if (this.coords[0][0] + blocksize < boardWidth &&
                     this.coords[1][0] + blocksize < boardWidth &&
                     this.coords[2][0] + blocksize < boardWidth &&
                     this.coords[3][0] + blocksize < boardWidth){
                 for (int[] block : this.coords){
-                    if (null != boardState[block[0]+blocksize][block[1]]){
-                        return false;
+                    if (null != boardState[(block[0]-10)/blocksize + 1][(block[1]-10)/blocksize]){
+                            return false;
                     }
                 }
                 return true;
@@ -330,20 +480,21 @@ class Tetronimo {
                     this.coords[2][0] - blocksize > 0 &&
                     this.coords[3][0] - blocksize > 0){
                 for (int[] block : this.coords){
-                    if (null != boardState[block[0]-blocksize][block[1]]){
+                    if (null != boardState[(block[0]-10)/blocksize - 1][(block[1]-10)/blocksize]){
                         return false;
                     }
                 }
                 return true;
             }
             return false;
-        } else if (move.equals("DOWN")){
+        }
+        else if (move.equals("DOWN")){
             if (this.coords[0][1] + blocksize < boardHeight &&
                     this.coords[1][1] + blocksize < boardHeight &&
                     this.coords[2][1] + blocksize < boardHeight &&
                     this.coords[3][1] + blocksize < boardHeight){
                 for (int[] block : this.coords){
-                    if (null != boardState[block[0]][block[1]+blocksize]){
+                    if (null != boardState[(block[0]-10)/blocksize][(block[1]-10)/blocksize + 1]){
                         return false;
                     }
                 }
@@ -357,22 +508,60 @@ class Tetronimo {
         }
     }
 
-    void rotate(){//like how it does L and Reverse-L. S and Z might want a change, as might T.
+    void rotate(){//like how it does L and Reverse-L. S and Z might want a change.
         if (this.shape == Shape.SQUARE){
             return;
         }
         int centerx = this.coords[1][0];
         int centery = this.coords[1][1];
+        boolean shoveRight = false;
+        boolean shoveLeft = false;
+        boolean shoveRightTwice = false;
+        boolean shoveLeftTwice = false;
+
         int temp;
         for (int[] point : this.coords){
             temp = point[0]-centerx;
             point[0] = -(point[1] - centery) + centerx;
             point[1] = temp + centery;
+            if (point[0] < 0){
+                shoveRight = true;
+            } else if (point [0] > 10*blocksize){
+                shoveLeft = true;
+            }
+
+            if (point[0] <= -2*blocksize+10){
+                shoveRightTwice = true;
+            } else if (point[0] >= 11*blocksize+10){
+                shoveLeftTwice = true;
+            }
+        }
+
+        if (shoveRightTwice){ //to handle line piece
+            for (int[] point : this.coords){
+                point[0] += 2*blocksize;
+            }
+            return;
+        } else if (shoveLeftTwice){
+            for (int[] point : this.coords){
+                point[0] -= 2*blocksize;
+            }
+            return;
+        }
+
+        if (shoveRight){ //for everything else.
+            for (int[] point : this.coords){
+                point[0] += blocksize;
+            }
+        } else if (shoveLeft){
+            for (int[] point : this.coords){
+                point[0] -= blocksize;
+            }
         }
     }
 }
 
-class musicThread extends Thread { //provides music thread - but how to get it to loop? --will the curent thing be ok forever?
+class musicThread extends Thread { //provides music thread
 
     Sequencer seq = null;
 
@@ -408,45 +597,5 @@ class musicThread extends Thread { //provides music thread - but how to get it t
 
         seq.setLoopCount(100);
         seq.start();
-        //keepPlaying();
     }
-
-    private void keepPlaying(){
-        seq.start();
-        while(seq.isRunning()){
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        System.out.println("Does this happen?");
-        keepPlaying();
-    }
-    //keepPlaying fails to make it loop correctly. After seq finishes, it no longer has a set
-    //sequence, so has nothing to play. Tried to make it reset the sequence as the first line of keepPlaying
-    //however this just made a strange exception get thrown. Not ideal.
 }
-
-
-//for (int[] pt : testShape.coords){
-//    g.drawLine(pt[0],          pt[1],          pt[0]+blocksize,pt[1]);
-//    g.drawLine(pt[0],          pt[1],          pt[0],          pt[1]+blocksize);
-//    g.drawLine(pt[0]+blocksize,pt[1],          pt[0]+blocksize,pt[1]+blocksize);
-//    g.drawLine(pt[0],          pt[1]+blocksize,pt[0]+blocksize,pt[1]+blocksize);
-//}
-
-//public boolean moveDownPossible(String move, Color[][] boardState){
-//    if (this.coords[3][1] + blocksize < boardHeight){
-//        for (int[] block : this.coords){
-//            //if (boardState[block[0]][block[1]+blocksize]){
-//            //    return false;
-//            //}
-//            if (null != boardState[block[0]][block[1] + blocksize]){
-//                return false;
-//            }
-//        }
-//        return true;
-//    }
-//    return false;
-//}
